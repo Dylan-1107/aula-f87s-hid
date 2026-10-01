@@ -33,16 +33,27 @@ function plugin.on_tick(dt)
   state.elapsed = state.elapsed + math.max(tonumber(dt) or 0.016, 0)
   local interval = state.failures > 0 and 2 or 1 / 60
   if state.elapsed < interval then return end
-  state.elapsed = 0
+  -- Keep the remainder so a 16 ms host tick does not collapse 60 Hz into 30 Hz.
+  -- Discard missed frames after a stall; send at most one frame per callback.
+  state.elapsed = state.elapsed % interval
   if not state.initialized then
-    if not protocol.initialize() then state.failures = state.failures + 1; return end
+    if not protocol.initialize() then
+      state.failures = state.failures + 1
+      state.elapsed = 0
+      return
+    end
     state.initialized = true
   end
   local rgb = device:get_rgb_bytes(OUTPUT_ID)
   if type(rgb) ~= "string" or #rgb ~= layout.LED_COUNT * 3 then return end
   local keys, ring, side = layout.split_frame(rgb)
-  if protocol.update(keys, layout.HARDWARE_IDS, ring, side) then state.failures = 0
-  else state.failures = state.failures + 1 end
+  if protocol.update(keys, layout.HARDWARE_IDS, ring, side) then
+    if state.failures > 0 then state.elapsed = 0 end
+    state.failures = 0
+  else
+    state.failures = state.failures + 1
+    state.elapsed = 0
+  end
 end
 
 function plugin.on_shutdown()

@@ -1,0 +1,24 @@
+{
+  "id": "aula_f87s_wireless",
+  "version": "1.0.0",
+  "name": "meta.name",
+  "publisher": "Skydimo",
+  "description": "meta.description",
+  "repository": "https://github.com/skydimo/skydimo-plugins",
+  "license": "MIT",
+  "type": "controller",
+  "language": "lua",
+  "entry": "main.lua",
+  "match": {
+    "protocol": "hid",
+    "timeout_ms": 100,
+    "rules": [
+      { "vid": "0x0C45", "pid": "0xFEF9", "interface_number": 3 }
+    ]
+  },
+  "permissions": [
+    "hid:read",
+    "hid:write",
+    "log"
+  ]
+}

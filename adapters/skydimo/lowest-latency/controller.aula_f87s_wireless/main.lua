@@ -9,7 +9,7 @@ function plugin.on_validate()
   device:set_manufacturer("AULA")
   device:set_model("AULA F87S 2.4G")
   device:set_device_type("keyboard")
-  device:set_description("F87S wireless RGB with volume ring and side light zones via 0C45:FEF9 MI_03")
+  device:set_description("F87S wireless per-key RGB via 0C45:FEF9 MI_03")
   local serial = device:serial_id()
   if not serial or serial == "" then serial = device:controller_port() end
   device:set_serial_id("F87S-24G-" .. tostring(serial))
@@ -18,7 +18,7 @@ end
 
 function plugin.on_init()
   device:add_output({
-    id = "keys", name = "F87S 2.4G Keyboard + Zones", type = "matrix", size = layout.LED_COUNT,
+    id = "keys", name = "F87S 2.4G Keyboard", type = "matrix", size = layout.LED_COUNT,
     matrix = { width = layout.WIDTH, height = layout.HEIGHT, map = layout.MAP },
     capabilities = {
       editable = false, min_total_leds = layout.LED_COUNT,
@@ -30,7 +30,7 @@ function plugin.on_init()
   state.failures = 0
   -- Retry snapshot initialization in on_tick if the keyboard is asleep.
   if protocol.initialize() then state.initialized = true end
-  device:log("F87S 2.4G: initialized; unified compact 101-sample matrix (87 keys + ring + side bars)")
+  device:log("F87S 2.4G: initialized; calibrated 87-key matrix")
 end
 
 function plugin.on_tick(dt)
@@ -44,8 +44,7 @@ function plugin.on_tick(dt)
   end
   local rgb = device:get_rgb_bytes("keys")
   if type(rgb) ~= "string" or #rgb ~= layout.LED_COUNT * 3 then return end
-  local keys, ring, side = layout.split_frame(rgb)
-  if protocol.update(keys, layout.HARDWARE_IDS, ring, side) then
+  if protocol.update(rgb, layout.HARDWARE_IDS) then
     state.failures = 0
   else
     state.failures = state.failures + 1

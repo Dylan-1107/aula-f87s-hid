@@ -91,10 +91,19 @@ node tools/f87s-wireless-control.mjs selftest               # 离线自检，不
 
 ### 3. 接 SKYdimo（可选）
 
+插件有**两个变体，只能装一个**（plugin id 相同）：
+
+| 变体 | 特点 | 适合 |
+|---|---|---|
+| 🏃 [`lowest-latency`](adapters/skydimo/lowest-latency) | 18×6 / **87 键**；每帧只发 `cmd36` 差分，不等 ACK；装饰灯**保留官方出厂预设** | 音乐律动、屏幕取色同步等要跟手的场景 |
+| 🎨 [`best-effects`](adapters/skydimo/best-effects) | 19×6 / **101 点**；含旋钮星环 + 两侧灯条，全身灯效同步；每帧多两次灯区 ACK 往返 | 氛围展示、全身同步 |
+
 ```bash
 # 关闭 SKYdimo 后，以管理员权限复制（C:/Program Files 需要提权）
-cp -r adapters/skydimo/controller.aula_f87s           "C:/Program Files/Skydimo/plugins/"
-cp -r adapters/skydimo/controller.aula_f87s_wireless  "C:/Program Files/Skydimo/plugins/"
+# 延迟最优：
+cp -r adapters/skydimo/lowest-latency/controller.aula_f87s           "C:/Program Files/Skydimo/plugins/"
+cp -r adapters/skydimo/lowest-latency/controller.aula_f87s_wireless  "C:/Program Files/Skydimo/plugins/"
+# 或效果最好：把上面两行的 lowest-latency 换成 best-effects
 ```
 
 重启后确认设备档案里 `lastSeenControllerId` 为 `aula_f87s` / `aula_f87s_wireless`。
@@ -102,7 +111,8 @@ cp -r adapters/skydimo/controller.aula_f87s_wireless  "C:/Program Files/Skydimo/
 > ⚠️ 改了 `C:/Program Files` 却没生效？SKYdimo **优先加载用户目录**
 > `%APPDATA%\Roaming\com.skydimo.desktop\plugins\` 下的同名插件，它会覆盖 Program Files 版本。
 
-完整步骤与排错 → [`docs/SKYDIMO.md`](docs/SKYDIMO.md)。
+变体对比 → [`adapters/skydimo/README.md`](adapters/skydimo/README.md)
+实现细节与排错 → [`docs/SKYDIMO.md`](docs/SKYDIMO.md)。
 
 ---
 
@@ -117,8 +127,10 @@ docs/
   OPENRGB.md             接入 OpenRGB 的三条路径（均不需要 SKYdimo）
   SKYDIMO.md             SKYdimo 插件实现方法（适配层文档）
 adapters/
-  skydimo/               有线 + 无线 Lua 插件（19×6 / 101 点统一矩阵）
-    tests/               离线 Lua mock 测试（34 项，不接硬件）
+  skydimo/               SKYdimo 插件，两个变体二选一（见下方）
+    lowest-latency/      🏃 延迟最优：18×6 / 87 键，装饰灯保留官方预设
+    best-effects/        🎨 效果最好：19×6 / 101 点，含旋钮星环与侧灯
+      tests/             离线 Lua mock（34 项，不接硬件）
   openrgb/               OpenRGB 原生 C++ 控制器（⚠️ 从未编译）
 tools/
   aula-f87s-light.mjs        有线 CLI（node-hid）

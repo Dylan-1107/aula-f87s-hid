@@ -6,6 +6,12 @@
 >
 > SKYdimo 以 OpenRGB 为后端，控制器走 **Lua 插件**机制。本文记录 AULA F87S 两个插件的完整实现思路与所有关键坑。
 > 键位见 [`KEY-MAPPING.md`](KEY-MAPPING.md)。源码在 [`adapters/skydimo/`](../adapters/skydimo)。
+>
+> ⚠️ **插件有两个变体**，先去 [`adapters/skydimo/README.md`](../adapters/skydimo/README.md) 选一个：
+> **🏃 `lowest-latency`**（18×6 / 87 键，延迟最优，装饰灯保留官方预设）
+> 和 **🎨 `best-effects`**（19×6 / 101 点，效果最好，含星环与侧灯）。
+> 下面各节的矩阵尺寸以 **`best-effects`** 为准；`lowest-latency` 的差异是
+> **没有灯区采样点、不接管 cmd43/45**。
 
 ### SKYdimo 是什么
 
@@ -227,7 +233,7 @@ return ok and (count == #packet or count == true)
 
 ## 7. 离线测试（Lua mock）
 
-不接硬件也能验证插件逻辑。[`adapters/skydimo/tests/mock-test-wireless.py`](../adapters/skydimo/tests/mock-test-wireless.py)
+不接硬件也能验证插件逻辑。[`adapters/skydimo/best-effects/tests/mock-test-wireless.py`](../adapters/skydimo/best-effects/tests/mock-test-wireless.py)
 用 Lua 5.4 模拟 `device` 对象，**当前 34 项断言全部通过**：
 
 - 初始化 + 首帧：`19` + `20`×10 + `27, 29` + `36`×10 + `35, 43, 45`
@@ -240,7 +246,7 @@ return ok and (count == #packet or count == true)
 
 ```bash
 pip install lupa
-cd adapters/skydimo/tests
+cd adapters/skydimo/best-effects/tests
 python mock-test-wireless.py
 ```
 

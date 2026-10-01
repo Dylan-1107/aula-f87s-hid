@@ -12,7 +12,7 @@ pip install lupa          # Python 里的 Lua 5.4 运行时
 ## 用法
 
 ```bash
-cd adapters/skydimo/tests
+cd adapters/skydimo/best-effects/tests
 python mock-test-wireless.py
 ```
 

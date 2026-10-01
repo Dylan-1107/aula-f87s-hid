@@ -408,8 +408,8 @@ checksum: sum = 0x09 + packet[0..61]；packet[62] = (0xFF - sum) & 0xFF
 | **命令行（推荐先试）** | `tools/aula-f87s-light.mjs` | 有线 CLI：set / single / rainbow / off / read |
 | | `tools/f87s-wireless-control.mjs` | 无线 CLI：probe / set / single / off / demo / restore / selftest |
 | **OpenRGB** | `adapters/openrgb/` | 原生 C++ 控制器（⚠️ 从未编译）。接入方式见 [`OPENRGB.md`](OPENRGB.md) |
-| **SKYdimo** | `adapters/skydimo/controller.aula_f87s/` | Lua 插件（有线） |
-| | `adapters/skydimo/controller.aula_f87s_wireless/` | Lua 插件（2.4G 无线） |
+| **SKYdimo** | `adapters/skydimo/best-effects/controller.aula_f87s/` | Lua 插件（有线） |
+| | `adapters/skydimo/best-effects/controller.aula_f87s_wireless/` | Lua 插件（2.4G 无线） |
 | **你自己的程序** | — | 照 §2 / §3 / §5 实现即可，约 50 行 |
 
 **最短实现**（语言无关，仅首次同步；后续帧改用 §3.1 的 `last=0` 差分）：

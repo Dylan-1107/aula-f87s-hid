@@ -1,8 +1,14 @@
+import argparse
 import json
 from pathlib import Path
 from lupa.lua54 import LuaRuntime
 
-ROOT = Path(__file__).resolve().parent.parent / 'controller.aula_f87s_wireless'
+parser = argparse.ArgumentParser()
+parser.add_argument('--controller', choices=('wired', 'wireless'), default='wireless')
+parser.add_argument('--report', type=Path)
+args = parser.parse_args()
+controller_name = 'controller.aula_f87s' + ('_wireless' if args.controller == 'wireless' else '')
+ROOT = Path(__file__).resolve().parent.parent / controller_name
 lua = LuaRuntime(encoding=None, unpack_returned_tuples=True)
 lua.execute(b'''
 device={packets={},queue={},colors='',mode=string.rep('x',16),ring=string.char(2)..string.rep('r',23),side=string.char(2)..string.rep('s',23),outputs={},suppress={},fail=false,prefix=false}
@@ -56,7 +62,7 @@ def update(frame):
     keys, ring, side = l.split_frame(frame)
     return p.update(keys, l.HARDWARE_IDS, ring, side)
 
-check('wireless device validation', entry.on_validate())
+check(args.controller + ' device validation', entry.on_validate())
 check('complete compact 19x6 matrix', len(l.MAP) == 114)
 check('every logical sample appears exactly once', sorted(v for v in l.MAP.values() if v >= 0) == list(range(101)))
 check('87 calibrated hardware IDs unique', len(set(l.HARDWARE_IDS.values())) == 87)
@@ -94,6 +100,7 @@ reset()
 entry.on_tick(0.020)
 check('changed frame has eight keyboard chunks and two zone packets', cmds() == [36] * 8 + [43, 45])
 check('keyboard differences keep lastFlag zero', all(d.packets[i][7] == 0 for i in range(1, 9)))
+check('each keyboard chunk carries 14 complete key slots', all(d.packets[i][3] == 56 and d.packets[i][4] + d.packets[i][5] * 256 == (i - 1) * 56 for i in range(1, 9)))
 new_frame = bytearray(d.rgb)
 new_frame[logical * 3] = 11
 d.rgb = bytes(new_frame)
@@ -142,11 +149,72 @@ check('initialization retried after wakeup', cmds() == [19] + [20] * 10 + [27, 2
 entry.on_shutdown()
 check('final restore complete', original == (d.colors, d.mode, d.ring, d.side))
 manifest = json.loads((ROOT / 'manifest.json').read_text(encoding='utf-8'))
-check('wireless match unchanged', manifest['match']['rules'] == [{'vid': '0x0C45', 'pid': '0xFEF9', 'interface_number': 3}])
-result = {'passed': True, 'checkCount': len(checks), 'checks': checks, 'matrix': {'width': 19, 'height': 6, 'samples': 101, 'keys': 87, 'ringSamples': 2, 'sideSamples': 12}, 'scope': 'Lua54 mock only; SKYdimo rendering and physical effects require live verification', 'realFpsMeasured': False, 'map': [l.MAP[i] for i in range(1, len(l.MAP) + 1)]}
+expected_match = {'vid': '0x0C45', 'pid': '0xFEF9', 'interface_number': 3} if args.controller == 'wireless' else {'vid': '0x38A6', 'pid': '0x2908', 'interface_number': 3}
+check(args.controller + ' match unchanged', manifest['match']['rules'] == [expected_match])
+# Exercise the actual entrypoint with a mocked protocol to isolate tick scheduling.
+lua.execute(b'''
+local count, init_ok, update_ok = 0, true, true
+local mock = {
+ initialize = function() return init_ok end,
+ update = function() count = count + 1; return update_ok end,
+ shutdown = function() return true end
+}
+package.loaded['lib.protocol'] = mock
+function tick_test_reset() count = 0 end
+function tick_test_count() return count end
+function tick_test_init(ok) init_ok = ok end
+function tick_test_update(ok) update_ok = ok end
+''')
+scheduler = lua.execute((ROOT / 'main.lua').read_bytes())
+schedules = []
+for dt in (0.008, 0.016, 0.0165, 1 / 60, 0.020, 0.033):
+    scheduler.on_init()
+    lua.globals().tick_test_reset()
+    for _ in range(1000):
+        scheduler.on_tick(dt)
+    count = lua.globals().tick_test_count()
+    expected = min(1000, 1000 * dt * 60)
+    check(f'{dt}s ticks preserve 60Hz budget without bursts', abs(count - expected) <= 1)
+    elapsed = 0.0
+    old_count = 0
+    for _ in range(1000):
+        elapsed += dt
+        if elapsed >= 1 / 60:
+            old_count += 1
+            elapsed = 0.0
+    schedules.append({'tickSeconds': dt, 'callbacks': 1000, 'beforeFrames': old_count,
+                      'afterFrames': count, 'beforeFps': old_count / (1000 * dt),
+                      'afterFps': count / (1000 * dt)})
+scheduler.on_init()
+lua.globals().tick_test_reset()
+scheduler.on_tick(5.005)
+check('stall emits at most one frame', lua.globals().tick_test_count() == 1)
+scheduler.on_tick(0)
+check('stall discards backlog', lua.globals().tick_test_count() == 1)
+scheduler.on_init()
+lua.globals().tick_test_reset()
+lua.globals().tick_test_update(False)
+scheduler.on_tick(0.033)
+lua.globals().tick_test_update(True)
+scheduler.on_tick(1.99)
+check('failure starts a fresh two-second backoff', lua.globals().tick_test_count() == 1)
+scheduler.on_tick(0.011)
+check('failure recovery resumes after backoff', lua.globals().tick_test_count() == 2)
+scheduler.on_tick(0)
+check('recovery drops backoff time remainder', lua.globals().tick_test_count() == 2)
+lua.globals().tick_test_init(False)
+scheduler.on_init()
+lua.globals().tick_test_reset()
+scheduler.on_tick(0.033)
+lua.globals().tick_test_init(True)
+scheduler.on_tick(1.99)
+check('initialization failure backs off', lua.globals().tick_test_count() == 0)
+scheduler.on_tick(0.011)
+check('initialization failure recovers', lua.globals().tick_test_count() == 1)
+result = {'passed': True, 'controller': args.controller, 'schedules': schedules, 'checkCount': len(checks), 'checks': checks, 'matrix': {'width': 19, 'height': 6, 'samples': 101, 'keys': 87, 'ringSamples': 2, 'sideSamples': 12}, 'scope': 'Lua54 mock only; SKYdimo rendering and physical effects require live verification', 'realFpsMeasured': False, 'map': [l.MAP[i] for i in range(1, len(l.MAP) + 1)]}
 text = json.dumps(result, indent=2, ensure_ascii=False)
 print(text)
 import tempfile, os
-out = Path(tempfile.gettempdir()) / 'f87s-wireless-plugin-test.json'
+out = args.report or Path(tempfile.gettempdir()) / ('f87s-' + args.controller + '-plugin-test.json')
 out.write_text(text, encoding='utf-8')
 print('report:', out)

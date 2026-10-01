@@ -1,6 +1,1 @@
-{
-  "meta": {
-    "name": "AULA F87S",
-    "description": "AULA F87S keyboard RGB controller (per-key custom mode)."
-  }
-}
+{"meta":{"name":"AULA F87S 2.4G Wireless","description":"F87S wireless per-key RGB controller with volume ring and side light zones (0C45:FEF9, MI_03). Keeps the wired controller unchanged."}}

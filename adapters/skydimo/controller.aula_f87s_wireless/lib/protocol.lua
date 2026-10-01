@@ -2,8 +2,12 @@
 -- Output: reportId 0 + 64-byte body. Input: 64-byte body.
 -- 首次同步等待 ACK，后续 RGB888 差分块使用 last=0 写入。
 local protocol = {}
-local allowed = { [16] = true, [19] = true, [20] = true, [35] = true, [36] = true }
+local allowed = {
+  [16] = true, [19] = true, [20] = true, [27] = true, [29] = true,
+  [35] = true, [36] = true, [43] = true, [45] = true,
+}
 local last_rgb, last_table = nil, nil
+local last_ring_rgb, last_side_rgb = nil, nil
 local saved = nil
 local zeros = string.rep("\0", 56)
 
@@ -64,6 +68,7 @@ local function command_ack(cmd, data)
     end
     if not received then
       last_rgb, last_table = nil, nil
+      last_ring_rgb, last_side_rgb = nil, nil
       device:error("F87S 2.4G: response timeout cmd=" .. cmd .. " address=" .. address)
       return nil
     end
@@ -77,6 +82,7 @@ local function fast_write(cmd, chunk, address, last)
   drain()
   if write_result(report(cmd, chunk, address, last)) then return true end
   last_rgb, last_table = nil, nil
+  last_ring_rgb, last_side_rgb = nil, nil
   device:error("F87S 2.4G: write failed cmd=" .. cmd .. " address=" .. address)
   return false
 end
@@ -99,15 +105,35 @@ function protocol.initialize()
   if not effect then return false end
   local colors = command_ack(20, string.rep("\0", 512))
   if not colors then return false end
+  local ring = command_ack(27, string.rep("\0", 24))
+  if not ring then return false end
+  local side = command_ack(29, string.rep("\0", 24))
+  if not side then return false end
   -- Do not change lighting unless a complete recovery snapshot is available.
-  saved = { effect = effect, colors = colors }
+  saved = { effect = effect, colors = colors, ring = ring, side = side }
   last_rgb, last_table = nil, nil
+  last_ring_rgb, last_side_rgb = nil, nil
   return true
 end
 
-function protocol.update(rgb, ids)
+local function zone_packet(rgb, original)
+  if type(rgb) ~= "string" or #rgb < 3 or type(original) ~= "string" or #original ~= 24 then return nil end
+  return string.char(original:byte(1), rgb:byte(1), rgb:byte(2), rgb:byte(3)) .. original:sub(5)
+end
+
+local function update_zone(rgb, previous, original, command_id)
+  if not rgb or rgb == previous then return previous, true end
+  local packet = zone_packet(rgb, original)
+  if not packet then return previous, false end
+  if not command_ack(command_id, packet) then return previous, false end
+  return rgb, true
+end
+
+function protocol.update(rgb, ids, ring_rgb, side_rgb)
   if not saved or type(rgb) ~= "string" or #rgb ~= 87 * 3 or #ids ~= 87 then return false end
-  if rgb == last_rgb then return true end
+  if type(ring_rgb) ~= "string" or #ring_rgb ~= 3 then return false end
+  if type(side_rgb) ~= "string" or #side_rgb ~= 3 then return false end
+  if rgb == last_rgb and ring_rgb == last_ring_rgb and side_rgb == last_side_rgb then return true end
   local data = {}
   for slot = 0, 127 do
     data[slot * 4 + 1] = string.char(slot)
@@ -138,7 +164,12 @@ function protocol.update(rgb, ids)
       .. effect:sub(11, 14) .. string.char(0xAA, 0x55)
     if not command_ack(35, effect) then return false end
   end
+  local next_ring, ring_ok = update_zone(ring_rgb, last_ring_rgb, saved.ring, 43)
+  if not ring_ok then return false end
+  local next_side, side_ok = update_zone(side_rgb, last_side_rgb, saved.side, 45)
+  if not side_ok then return false end
   last_rgb, last_table = rgb, data
+  last_ring_rgb, last_side_rgb = next_ring, next_side
   return true
 end
 
@@ -147,8 +178,11 @@ function protocol.shutdown()
   local original = saved
   local colors = command_ack(36, original.colors)
   local effect = colors and command_ack(35, original.effect)
+  local ring = effect and command_ack(43, original.ring)
+  local side = ring and command_ack(45, original.side)
   saved, last_rgb, last_table = nil, nil, nil
-  if not colors or not effect then
+  last_ring_rgb, last_side_rgb = nil, nil
+  if not colors or not effect or not ring or not side then
     device:error("F87S 2.4G: unable to restore original lighting after disconnect")
     return false
   end

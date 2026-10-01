@@ -33,6 +33,8 @@ cmd36 写 128 槽 RGB888 表（512 B）→ cmd35 切 mode=20 / brightness=5 → 
 
 **两个致命参数**：`mode` 必须是 **20**（其他值是板载动画）；`brightness` 量程是 **0–5**，填 255 会全黑。
 
+除 87 键逐键外，还有两组**整区单色**装饰灯（旋钮星环 + 两侧灯条），走 `cmd43` / `cmd45`（24 B 参数块，必须以读回的原值当底稿）。
+
 完整规范 → [`docs/HID-PROTOCOL.md`](docs/HID-PROTOCOL.md)
 
 ---
@@ -82,6 +84,10 @@ cp -r adapters/skydimo/controller.aula_f87s_wireless  "C:/Program Files/Skydimo/
 ```
 
 重启后确认设备档案里 `lastSeenControllerId` 为 `aula_f87s` / `aula_f87s_wireless`。
+
+> ⚠️ 改了 `C:/Program Files` 却没生效？SKYdimo **优先加载用户目录**
+> `%APPDATA%\Roaming\com.skydimo.desktop\plugins\` 下的同名插件，它会覆盖 Program Files 版本。
+
 完整步骤与排错 → [`docs/SKYDIMO.md`](docs/SKYDIMO.md)。
 
 ---
@@ -95,7 +101,8 @@ docs/
   OPENRGB.md             接入 OpenRGB 的三条路径（均不需要 SKYdimo）
   SKYDIMO.md             SKYdimo 插件实现方法（适配层文档）
 adapters/
-  skydimo/               有线 + 无线 Lua 插件
+  skydimo/               有线 + 无线 Lua 插件（19×6 / 101 点统一矩阵）
+    tests/               离线 Lua mock 测试（34 项，不接硬件）
   openrgb/               OpenRGB 原生 C++ 控制器（⚠️ 从未编译）
 tools/
   aula-f87s-light.mjs        有线 CLI（node-hid）
@@ -114,11 +121,13 @@ data/
 | 无线协议逆向 + 点亮 | ✅ 实测（全键设色 + Delete=106 单键） |
 | 87 键硬件地址映射 | ✅ 由校准数据确定 |
 | 有线差分更新 30/60 FPS | ✅ 3 秒调度 + 尾帧回读验证 |
+| **装饰灯区（星环 + 侧灯，cmd43/45）** | ✅ 无线读/写/回读/恢复实测通过；有线代码已对齐未实测 |
+| SKYdimo 统一 19×6 / 101 点矩阵 | ✅ 无线已确认单输出 + 紧凑矩阵；有线渲染待目视 |
+| 插件离线 mock 测试 | ✅ **34 项断言全部通过**（不接硬件） |
 | 无线 87 键逐键复测 | ⚠️ 仅确认 Delete，其余继承有线校准 |
-| SKYdimo 内实际视觉效果 | ⚠️ 协议层通，需目视确认 |
-| 无线 `last=0` 差分版帧率 | ⚠️ 代码 + Lua mock 通过，未实测 |
+| 无线 `last=0` 差分版帧率 | ⚠️ mock 只验证包序列，真实帧率未实测 |
 | `0x08` 实时通道 | ❌ 未证实显示生效，**已禁用** |
-| 槽位 87–127（旋钮星环 / 侧灯） | ❌ 未接入（需 cmd43/45） |
+| 灯区逐灯珠可控 | ❌ 硬件上是**整区单色**，采样点只是 UI 虚拟格 |
 | OpenRGB C++ 控制器 | ❌ 缺 Qt，**从未编译** |
 
 ---

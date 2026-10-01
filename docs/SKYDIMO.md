@@ -18,7 +18,7 @@ C:/Program Files/Skydimo/plugins/controller.aula_f87s_wireless/  # 无线
 manifest.json      id / 版本 / 设备匹配规则
 main.lua           生命周期：on_validate / on_init / on_tick / on_shutdown
 lib/protocol.lua   HID 组包与发送
-lib/layout.lua     18×6 矩阵 MAP + HARDWARE_IDS
+lib/layout.lua     19×6 / 101 采样点 MAP + HARDWARE_IDS + split_frame
 locales/           zh-CN / zh-TW / en-US
 ```
 
@@ -79,7 +79,23 @@ device:add_output({
 ```
 
 > 早期踩坑：`editable` 写 false 且缺 `allowed_total_leds` 时，UI 不允许切换灯效。
-> 有线插件若要在 UI 里改灯效，需要 `editable = true`、`default_effect = "Rainbow"`、`allowed_total_leds = {87}`。
+> 有线插件若要在 UI 里改灯效，需要 `editable = true`、`default_effect = "Rainbow"`、
+> `allowed_total_leds = { layout.LED_COUNT }`（当前 **101**，不是 87）。
+
+### 3.2 只注册一个输出
+
+早期版本把按键、星环、侧灯注册成三个输出，SKYdimo 里显示为三个设备条目，体验很差。
+现在**两个插件都只注册一个 `keys` 矩阵**（19×6 / 101 采样点），灯区作为虚拟采样点并入同一张网格：
+
+```lua
+local keys, ring, side = layout.split_frame(rgb)
+protocol.update(keys, layout.HARDWARE_IDS, ring, side)
+```
+
+> ⚠️ **插件加载优先级**：SKYdimo 会优先加载
+> `%APPDATA%\Roaming\com.skydimo.desktop\plugins\controller.aula_f87s_wireless`，
+> 它**覆盖** `C:/Program Files/Skydimo/plugins/` 下的同名插件。
+> 改了 Program Files 却没生效时，先查用户目录里是不是有一份旧的。
 
 ---
 
@@ -184,19 +200,25 @@ return ok and (count == #packet or count == true)
 
 ## 7. 离线测试（Lua mock）
 
-不接硬件也能验证插件逻辑。`outputs/f87s-wireless-plugin-test.py` 用 Lua 5.4 模拟 `device` 对象，覆盖：
+不接硬件也能验证插件逻辑。[`adapters/skydimo/tests/mock-test-wireless.py`](../adapters/skydimo/tests/mock-test-wireless.py)
+用 Lua 5.4 模拟 `device` 对象，**当前 34 项断言全部通过**：
 
-- 首次同步 11 包（cmd36 ×10 + cmd35 ×1）
-- 第二变化帧只发 8 个 `last=0` 差分包、无 cmd35
-- 单键变化只发 1 包
-- 写失败后下一帧完整 11 包恢复
-- `write` 返回短写 / `0` / `false` / `nil` / 抛异常
-- 初始化失败、关闭恢复路径
+- 初始化 + 首帧：`19` + `20`×10 + `27, 29` + `36`×10 + `35, 43, 45`
+- 后续变化帧：仅变化的 `36` 分包（`last=0`），不发 `35`
+- 单键变化：只发 1 包
+- 写失败后：下一帧完整重新同步
+- 关闭：`36`×10 + `35, 43, 45`，状态回到快照原值
+- `device:write` 返回短写 / `0` / `false` / `nil` / 抛异常，全部不崩溃
+- 快照缺失时拒绝改灯；休眠唤醒后在 `on_tick` 重试初始化
 
 ```bash
-# 需要 lua5.4 在 PATH
-python outputs/f87s-wireless-plugin-test.py
+pip install lupa
+cd adapters/skydimo/tests
+python mock-test-wireless.py
 ```
+
+> **这只是 Lua 层 mock**，验证「插件发的包是对的」；不验证 SKYdimo 渲染、真实灯珠或帧率。
+> 有线插件暂无对应 mock，欢迎 PR。
 
 ---
 
@@ -204,9 +226,10 @@ python outputs/f87s-wireless-plugin-test.py
 
 | # | 问题 | 状态 |
 |---|---|---|
-| 1 | SKYdimo 内实际视觉效果（协议层通，需目视） | 待确认 |
-| 2 | 矩阵横纵转置（若转置只改 MAP，不改 HARDWARE_IDS） | 待确认 |
-| 3 | 无线 `last=0` 差分版的真实帧率 | 未实测 |
-| 4 | 槽位 87–127（旋钮星环 + 侧灯，需 cmd43/45） | 未接入 |
-| 5 | `0x08` 实时通道在 F87S 上显示未证实 | 已禁用 |
-| 6 | 87 键无线映射仅确认 Delete=106，其余继承有线校准 | 未逐键复测 |
+| 1 | SKYdimo 内实际视觉效果 | ✅ 无线已确认单输出 + 紧凑矩阵；有线渲染待目视 |
+| 2 | 矩阵横纵转置（若转置只改 MAP，不改 HARDWARE_IDS） | ✅ 当前布局已按实机确认 |
+| 3 | 无线 `last=0` 差分版的真实帧率 | ⚠️ 未实测（mock 只验证包序列） |
+| 4 | 装饰灯区（星环 + 侧灯，cmd43/45） | ✅ 无线已实测读写恢复；有线代码已对齐、未实测 |
+| 5 | `0x08` 实时通道在 F87S 上显示未证实 | ❌ 已禁用 |
+| 6 | 87 键无线映射仅确认 Delete=106，其余继承有线校准 | ⚠️ 未逐键复测 |
+| 7 | 灯区采样点为虚拟点，硬件上是整区单色 | ⚠️ 设计如此，不可逐灯珠控制 |

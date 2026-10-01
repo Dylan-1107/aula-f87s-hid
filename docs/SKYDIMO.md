@@ -92,6 +92,9 @@ local keys, ring, side = layout.split_frame(rgb)
 protocol.update(keys, layout.HARDWARE_IDS, ring, side)
 ```
 
+布局为什么长这样（侧灯在最外侧两列、星环只有 2 格）见
+[`KEY-MAPPING.md` §5.2](KEY-MAPPING.md#52-为什么是-19-列为什么星环只有-2-格)——都是从实机结构来的。
+
 > ⚠️ **插件加载优先级**：SKYdimo 会优先加载
 > `%APPDATA%\Roaming\com.skydimo.desktop\plugins\controller.aula_f87s_wireless`，
 > 它**覆盖** `C:/Program Files/Skydimo/plugins/` 下的同名插件。
@@ -232,4 +235,4 @@ python mock-test-wireless.py
 | 4 | 装饰灯区（星环 + 侧灯，cmd43/45） | ✅ 无线已实测读写恢复；有线代码已对齐、未实测 |
 | 5 | `0x08` 实时通道在 F87S 上显示未证实 | ❌ 已禁用 |
 | 6 | 87 键无线映射仅确认 Delete=106，其余继承有线校准 | ⚠️ 未逐键复测 |
-| 7 | 灯区采样点为虚拟点，硬件上是整区单色 | ⚠️ 设计如此，不可逐灯珠控制 |
+| 7 | 灯区采样点均为虚拟点，硬件上是整区单色 | ⚠️ 设计如此：旋钮仅**半边**有灯，侧灯在**底壳外侧**，都不可逐灯珠控制 |

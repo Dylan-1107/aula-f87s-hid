@@ -7,6 +7,30 @@
 > SKYdimo 以 OpenRGB 为后端，控制器走 **Lua 插件**机制。本文记录 AULA F87S 两个插件的完整实现思路与所有关键坑。
 > 键位见 [`KEY-MAPPING.md`](KEY-MAPPING.md)。源码在 [`adapters/skydimo/`](../adapters/skydimo)。
 
+### SKYdimo 是什么
+
+SKYdimo 是一个桌面灯效控制软件，**内置完整 OpenRGB 作为后端**（自带 `OpenRGB.exe` +
+`hidapi.dll` + Qt5 DLL）。它的设备控制器走 Lua 插件机制，插件放在
+`C:/Program Files/Skydimo/plugins/` 下即可被自动识别。
+
+**它对本项目不是必需的** —— 不用它也能直接接 OpenRGB 或自己写程序，
+见 [`OPENRGB.md`](OPENRGB.md)。
+
+### 插件可用的 `device` API
+
+写插件时宿主注入的全局 `device` 对象提供这些方法（按用途分组）：
+
+| 类别 | 方法 |
+|---|---|
+| 生命周期 | `on_validate` / `on_init` / `on_tick(dt)` / `on_shutdown` |
+| HID | `device:write(string)` / `device:read(size, timeout_ms)` |
+| 取色 | `device:get_rgb_bytes(output_id)` |
+| 注册输出 | `device:add_output({...})` |
+| 设备信息 | `set_manufacturer` / `set_model` / `set_device_type` / `set_description` / `set_serial_id` / `serial_id` / `controller_port` |
+| 日志 | `device:log(msg)` / `device:error(msg)` |
+
+> ⚠️ **没有 `device:sleep`** —— 延时只能靠 `device:read(size, timeout_ms)` 的超时实现。
+
 ---
 
 ## 1. 插件目录结构

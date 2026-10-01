@@ -50,6 +50,20 @@ cmd36 写 128 槽 RGB888 表（512 B）→ cmd35 切 mode=20 / brightness=5 → 
 
 ---
 
+## 环境要求
+
+| 项目 | 要求 |
+|---|---|
+| Node.js | ≥ 18（用到 ESM + 全局 fetch 无关，主要是不老就行） |
+| `node-hid` | `npm i node-hid`（本项目在 v3.4.0 上验证） |
+| 操作系统 | Windows 开箱可用；Linux 需要 udev 规则；macOS 可用（见 [`HID-PROTOCOL.md` §14](docs/HID-PROTOCOL.md#14-跨平台注意事项)） |
+| 管理员权限 | **不需要**（Windows 下开 HID 不用提权；写 `C:/Program Files` 才需要） |
+| 离线测试（可选） | Python + `pip install lupa` |
+
+**每次操作前**：完全退出 AULA Hub（**含托盘图标**），否则它持续回写灯效。
+
+---
+
 ## 三种用法，任选其一
 
 ### 1. 命令行直接控灯（不装任何灯效软件）
@@ -98,6 +112,8 @@ cp -r adapters/skydimo/controller.aula_f87s_wireless  "C:/Program Files/Skydimo/
 docs/
   HID-PROTOCOL.md      ★ 主体：逆向 HID 接口文档（有线 + 无线，含证据等级）
   KEY-MAPPING.md       ★ 主体：87 键硬件 LED 地址映射
+  CALIBRATION.md       ★ 如何为你的键盘建立映射（复刻必读）
+  TROUBLESHOOTING.md     排错表：灯不亮 / 错位 / 找不到设备
   OPENRGB.md             接入 OpenRGB 的三条路径（均不需要 SKYdimo）
   SKYDIMO.md             SKYdimo 插件实现方法（适配层文档）
 adapters/
@@ -107,9 +123,27 @@ adapters/
 tools/
   aula-f87s-light.mjs        有线 CLI（node-hid）
   f87s-wireless-control.mjs  无线 CLI（node-hid）
+  calibrator/                ★ 网页版键位校准器（:8765）
 data/
   f87s-calibration.json      87 键校准映射（权威数据）
 ```
+
+---
+
+## 复刻路线图
+
+按你想做到哪一步选：
+
+| 目标 | 要读什么 | 能不能照抄 |
+|---|---|---|
+| **① 让我的 F87S 亮起来** | 上面「用法 1」+ [`TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | ✅ 完全照抄，键位表现成的 |
+| **② 自己写程序控灯** | [`HID-PROTOCOL.md`](docs/HID-PROTOCOL.md) §12 最小示例（约 40 行）+ §13 完整报文 | ✅ 协议通用 |
+| **③ 接进灯效软件** | [`OPENRGB.md`](docs/OPENRGB.md) / [`SKYDIMO.md`](docs/SKYDIMO.md) | ✅ 适配层现成 |
+| **④ 复刻到别的 AULA 键盘** | [`CALIBRATION.md`](docs/CALIBRATION.md) | ⚠️ **键位映射必须自己校准**，其余可复用 |
+
+**第 ④ 步是唯一不能抄的**：槽位 → 物理键的映射由固件决定，
+F87 Pro 的 W 是 14、F87S 的 W 是 34，照抄会点亮错的键。
+仓库自带网页校准器（`tools/calibrator/`），点着点着就能生成自己的映射表。
 
 ---
 

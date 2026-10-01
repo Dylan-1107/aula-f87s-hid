@@ -422,7 +422,108 @@ checksum: sum = 0x09 + packet[0..61]；packet[62] = (0xFF - sum) & 0xFF
 
 ---
 
-## 12. 免责声明
+## 12. 最小可运行示例（Node.js）
+
+复制粘贴即可跑，把整个键盘设成红色。**约 40 行，没有其他依赖。**
+
+```js
+import HID from 'node-hid';
+
+const W = 56, CMD_CUSTOM = 36, CMD_EFFECT = 35;
+
+// 1. 打开灯光口 MI_03；无线改 0x0C45 / 0xFEF9
+const info = HID.devices().find(d =>
+  d.vendorId === 0x38A6 && d.productId === 0x2908 && d.interface === 3);
+const dev = new HID.HID(info.path);
+
+// 2. 组包：node-hid 的 write() 首字节是 reportId，所以是 65 字节
+function packet(cmd, chunk, addr, last) {
+  const b = Buffer.alloc(65);
+  b[1] = 0xAA; b[2] = cmd; b[3] = chunk.length;
+  b[4] = addr & 255; b[5] = addr >> 8; b[7] = last ? 1 : 0;
+  chunk.copy(b, 9);
+  return b;
+}
+
+function send(cmd, data) {
+  for (let a = 0; a < data.length; a += W) {
+    const c = data.subarray(a, Math.min(a + W, data.length));
+    dev.write(packet(cmd, c, a, a + c.length === data.length));
+    dev.readTimeout(200);                       // 等 ACK 并排空
+  }
+}
+
+// 3. cmd36：512 B = 128 槽 × [槽ID, R, G, B]，槽 ID 必须是下标
+const table = Buffer.alloc(512);
+for (let s = 0; s < 128; s++) {
+  table[s * 4] = s;                             // ← 别漏，漏了会点不亮功能区
+  table[s * 4 + 1] = 255;                       // 全红
+}
+send(CMD_CUSTOM, table);
+
+// 4. cmd35：mode=20（custom）、brightness=5（量程 0–5！）、结尾 AA 55
+const effect = Buffer.alloc(16);
+effect[0] = 20; effect[9] = 5; effect[14] = 0xAA; effect[15] = 0x55;
+send(CMD_EFFECT, effect);
+
+dev.close();
+```
+
+想只点亮某一个键：把上面第 3 步改成「其余槽 RGB 全 0，只给目标槽上色」，
+目标槽位查 [`KEY-MAPPING.md`](KEY-MAPPING.md)（例如 W=34、Delete=106）。
+
+---
+
+## 13. 完整报文示例（可直接对照抓包）
+
+把 **W 键（槽位 34）设为绿色**，其余全黑。共 11 个包（cmd36 ×10 + cmd35 ×1），
+每包 65 字节（首字节 reportId=0，其后 64 字节报告体）：
+
+```text
+cmd36 包 0   addr=0    len=56  last=0
+00 AA 24 38 00 00 00 00 | 00 00 00 00 01 00 00 00 02 00 00 00 03 00 00 00
+                          04 00 00 00 05 00 00 00 06 00 00 00 07 00 00 00
+                          08 00 00 00 09 00 00 00 0A 00 00 00 0B 00 00 00
+                          0C 00 00 00 0D 00 00 00
+cmd36 包 1..8  仅 addr / len 变化（56 / 112 / ... / 448），payload 依此类推
+
+cmd36 包 9   addr=504  len=8   last=1
+00 AA 24 08 F8 01 00 01 00 | <最后 8 字节>
+
+cmd35        addr=0    len=16  last=1
+00 AA 23 10 00 00 00 01 00 | 14 FF FF FF FF 00 00 00 00 05 03 00 00 00 AA 55
+                              ↑mode  ↑主色RGB ↑255   ↑secRGB ↑cMode ↑亮度 ↑速度
+```
+
+对照要点：
+
+- `AA` 是发包头，`55` 是回包头，**不一样**；
+- 第 4 字节（报告体偏移 2）是**本包长度**，不是总长度；
+- 地址是 little-endian 字节偏移，504 = `F8 01`；
+- `lastFlag` 在报告体偏移 6（65 字节包里的第 8 字节）；
+- cmd35 那 16 字节里 `14`=mode20、`05`=亮度5、`AA 55`=结尾。
+
+---
+
+## 14. 跨平台注意事项
+
+协议本身与操作系统无关，但**打开 HID 设备**的方式有平台差异：
+
+| 平台 | 说明 |
+|---|---|
+| **Windows** | `node-hid` 开箱可用，**不需要管理员权限**。设备路径随 USB 口变化，按 VID/PID + interface + usagePage 枚举，不要硬编码 `\\?\HID#...` |
+| **Linux** | 需要 `udev` 规则给普通用户 hidraw 权限，否则 `open` 会 EACCES：<br>`SUBSYSTEM=="hidraw", ATTRS{idVendor}=="38a6", ATTRS{idProduct}=="2908", MODE="0666"`<br>写入 `/etc/udev/rules.d/99-aula-f87s.rules` 后 `sudo udevadm control --reload-rules && sudo udevadm trigger` |
+| **macOS** | `node-hid` 可用；系统可能把 vendor-defined 接口占用，若打不开先检查有没有其他程序持有 |
+
+通用要点：
+
+- **必须退出 AULA Hub（含托盘图标）**和任何正在写灯效的程序，否则串口被占 / 两边互相覆盖；
+- 无线接收器的 VID/PID 和键盘本体**不同**（`0x0C45:0xFEF9` vs `0x38A6:0x2908`），这是正常的；
+- 有线与无线同时接上时，两条路径都能写，**同一时刻只用一个**。
+
+---
+
+## 15. 免责声明
 
 本项目是通过**黑盒 USB 通信观测**逆向得到的第三方文档，与 AULA / 狼蛛官方无任何关联，也未使用其任何专有代码。
 

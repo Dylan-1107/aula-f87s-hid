@@ -1,11 +1,17 @@
 # AULA F87S — 逆向 HID 灯光接口文档（有线 + 2.4G 无线）
 
+> **本文件是整个仓库的主体。** SKYdimo / OpenRGB / CLI 工具都只是这套协议的适配层，
+> 任何能发 64 字节 HID output report 的程序都可以直接用它，**不需要装任何灯效软件**。
+>
 > 版本 v1.0 · 2026-10-01
-> 目标：用第三方程序（SKYdimo / node-hid / OpenRGB）直接控制狼蛛 AULA F87S 8K 的 87 键逐键 RGB。
+> 目标：用第三方程序（node-hid / OpenRGB / SKYdimo / 自写脚本）直接控制狼蛛 AULA F87S 8K 的 87 键逐键 RGB。
 > 方法：USB HID 枚举 + Windows HID capabilities + 官方配置协议黑盒实测（未使用任何厂商源码）。
 > 本文不依赖 AULA Hub 官方驱动，也不包含任何厂商专有代码。
 
 **一句话可用流程：`cmd36` 写 128 槽 RGB888 表 → `cmd35` 切 `mode=20, brightness=5`。有线与无线通用。**
+
+**想接 OpenRGB？** → [`OPENRGB.md`](OPENRGB.md)（三条路径，均不需要 SKYdimo）
+**键位地址表？** → [`KEY-MAPPING.md`](KEY-MAPPING.md)
 
 ---
 
@@ -347,15 +353,26 @@ checksum: sum = 0x09 + packet[0..61]；packet[62] = (0xFF - sum) & 0xFF
 
 ---
 
-## 11. 参考实现
+## 11. 适配层与参考实现
 
-| 文件 | 内容 |
-|---|---|
-| `tools/aula-f87s-light.mjs` | 有线 CLI（node-hid）：set / single / rainbow / off / read |
-| `tools/f87s-wireless-control.mjs` | 无线 CLI：probe / set / single / off / demo / restore / selftest |
-| `plugins/controller.aula_f87s/` | SKYdimo 有线插件 |
-| `plugins/controller.aula_f87s_wireless/` | SKYdimo 无线插件 |
-| `openrgb/` | OpenRGB C++ 控制器（⚠️ 从未编译，见该目录说明） |
+协议是语言无关的规范，下面是它的几种实现——**任选其一，互不依赖**：
+
+| 适配层 | 文件 | 说明 |
+|---|---|---|
+| **命令行（推荐先试）** | `tools/aula-f87s-light.mjs` | 有线 CLI：set / single / rainbow / off / read |
+| | `tools/f87s-wireless-control.mjs` | 无线 CLI：probe / set / single / off / demo / restore / selftest |
+| **OpenRGB** | `adapters/openrgb/` | 原生 C++ 控制器（⚠️ 从未编译）。接入方式见 [`OPENRGB.md`](OPENRGB.md) |
+| **SKYdimo** | `adapters/skydimo/controller.aula_f87s/` | Lua 插件（有线） |
+| | `adapters/skydimo/controller.aula_f87s_wireless/` | Lua 插件（2.4G 无线） |
+| **你自己的程序** | — | 照 §2 / §3 / §5 实现即可，约 50 行 |
+
+**最短实现**（语言无关，仅首次同步；后续帧改用 §3.1 的 `last=0` 差分）：
+
+```text
+1. 打开 MI_03（有线 0x38A6:0x2908 / usagePage 0xFF68，无线 0x0C45:0xFEF9 / 0xFF60）
+2. cmd36：512 B = 128 槽 × [slotId, R, G, B]，分 10 包，末包 lastFlag=1
+3. cmd35：16 B，mode=20、brightness=5、结尾 0xAA 0x55
+```
 
 ---
 

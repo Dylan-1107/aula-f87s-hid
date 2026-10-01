@@ -1,7 +1,11 @@
 # SKYdimo 插件实现方法（有线 + 2.4G 无线）
 
+> **本文是适配层文档，不是本仓库的主体。**
+> 主体是 [`HID-PROTOCOL.md`](HID-PROTOCOL.md) 描述的 HID 协议——SKYdimo 插件只是它的 Lua 实现之一，
+> 不用 SKYdimo 也能接 OpenRGB 或自己写（见 [`OPENRGB.md`](OPENRGB.md)）。
+>
 > SKYdimo 以 OpenRGB 为后端，控制器走 **Lua 插件**机制。本文记录 AULA F87S 两个插件的完整实现思路与所有关键坑。
-> 协议细节见 [`HID-PROTOCOL.md`](HID-PROTOCOL.md)，键位见 [`KEY-MAPPING.md`](KEY-MAPPING.md)。
+> 键位见 [`KEY-MAPPING.md`](KEY-MAPPING.md)。源码在 [`adapters/skydimo/`](../adapters/skydimo)。
 
 ---
 

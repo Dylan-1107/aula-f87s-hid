@@ -3,14 +3,27 @@
 同一套 HID 协议（[`docs/HID-PROTOCOL.md`](../../docs/HID-PROTOCOL.md)）的两个版本，
 **选一个装**，不要同时装。
 
+> ## ⚠️ 当前生效：`lowest-latency`（87 键纯键位）
+>
+> 用户目录 `%APPDATA%\com.skydimo.desktop\plugins\controller.aula_f87s_wireless\`
+> 装的是 **`lowest-latency`**：18 × 6 / **87 采样点**，只有按键，无星环/侧灯。
+>
+> 换变体必须**手动、整目录替换**，不要只覆盖单个文件 ——
+> 两个变体的 `lib/layout.lua` 采样点不同（87 vs 101），
+> 混用会出现 UI 形态错乱或帧长校验失败。
+
 | | [`lowest-latency/`](lowest-latency) | [`best-effects/`](best-effects) |
 |---|---|---|
-| **标签** | 🏃 **延迟最优** | 🎨 **效果最好** |
+| **标签** | 🏃 **延迟最优**（✅ 当前生效） | 🎨 **效果最好** |
 | 矩阵 | 18 × 6 / **87** 采样点 | 19 × 6 / **101** 采样点 |
 | 覆盖范围 | 仅 87 个按键 | 87 键 **+ 旋钮星环 + 两侧灯条** |
 | 每帧发的命令 | 仅 `cmd36` 变化分包（`last=0`，不等 ACK） | `cmd36` 差分 **+ `cmd43` + `cmd45`**（两次 `command_ack` 往返） |
 | 装饰灯区 | **保留官方出厂预设**，插件不接管 | 接管，跟随灯效一起变 |
 | 状态 | ✅ 作者日常在用 | ✅ 灯区读写实测通过；**真实帧率未实测** |
+
+> **⚠️ 改插件时不要顺手换变体。** 2026-10-05 曾因为「两份目录版本漂移」
+> 而把生效的 87 键版换成了 101 采样点版，导致 UI 凭空多出星环和侧灯 ——
+> 修bug 和换UI 形态是两件独立的事。**发现版本不一致时，先问用户。**
 
 ---
 
@@ -34,28 +47,38 @@ lowest-latency  每帧：cmd36 × n（快写）
 
 ## 怎么选
 
-- 想要**全身灯效同步**、用来做氛围/展示 → **`best-effects`**
-- 想要**跟手、低延迟**，比如音乐律动、屏幕取色同步 → **`lowest-latency`**
+- **当前生效、也是日常在用的** → **`lowest-latency`**（87 键纯键位，无星环侧灯）
+- 想要**全身灯效同步**、用来做氛围/展示 → **`best-effects`**（会接管星环和侧灯）
+
+换变体 = **整目录替换**（`main.lua` + `lib/` 全部），别只换 `layout.lua`。
 
 ---
 
 ## 安装
 
-关闭 SKYdimo，把选中的**两个目录**复制到插件目录（`C:/Program Files` 需要管理员权限）：
+关闭 SKYdimo，把选中的**两个目录**复制到**用户插件目录**（这才是真正生效的那份）：
 
 ```bash
-# 延迟最优
-cp -r adapters/skydimo/lowest-latency/controller.aula_f87s           "C:/Program Files/Skydimo/plugins/"
-cp -r adapters/skydimo/lowest-latency/controller.aula_f87s_wireless  "C:/Program Files/Skydimo/plugins/"
+PLUGINS="$APPDATA/com.skydimo.desktop/plugins"     # 实际生效
+# PLUGINS="C:/Program Files/Skydimo/plugins"      # 需管理员权限，且会被用户目录覆盖
+
+# 延迟最优（当前生效）
+cp -r adapters/skydimo/lowest-latency/controller.aula_f87s           "$PLUGINS/"
+cp -r adapters/skydimo/lowest-latency/controller.aula_f87s_wireless  "$PLUGINS/"
 
 # 或：效果最好
-cp -r adapters/skydimo/best-effects/controller.aula_f87s             "C:/Program Files/Skydimo/plugins/"
-cp -r adapters/skydimo/best-effects/controller.aula_f87s_wireless    "C:/Program Files/Skydimo/plugins/"
+# cp -r adapters/skydimo/best-effects/controller.aula_f87s             "$PLUGINS/"
+# cp -r adapters/skydimo/best-effects/controller.aula_f87s_wireless    "$PLUGINS/"
 ```
+
+> ⚠️ **换变体前先删掉旧目录**：`rm -rf "$PLUGINS/controller.aula_f87s_wireless"`
+> 再拷新的。直接覆盖可能残留上一个变体的 `lib/` 文件。
 
 > ⚠️ **SKYdimo 优先加载用户目录** `%APPDATA%\Roaming\com.skydimo.desktop\plugins\`，
 > 它会**覆盖** `C:/Program Files` 下的同名插件。改了 Program Files 没生效时，
 > 先去用户目录里删掉旧副本（或同步到那里）。
+> 日志里的 `duplicate controller plugin id; skipping` 就是这个机制在起作用，
+> 详见 [`docs/SKYDIMO.md` §6.1](../../docs/SKYDIMO.md)。
 
 两个变体的 plugin id 相同（`aula_f87s` / `aula_f87s_wireless`），
 所以**同一时刻只能存在一个**，别两个目录都塞进去。

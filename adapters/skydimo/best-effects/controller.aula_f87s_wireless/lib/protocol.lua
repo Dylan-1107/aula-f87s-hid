@@ -33,9 +33,9 @@ local function drain()
   return false
 end
 
-local function ack(cmd, address, length)
-  for _ = 1, 8 do
-    local ok, raw = pcall(device.read, device, 65, 200)
+local function ack(cmd, address, length, attempts, timeout_ms)
+  for _ = 1, (attempts or 8) do
+    local ok, raw = pcall(device.read, device, 65, timeout_ms or 200)
     if not ok then return nil end
     local r = body(raw)
     if not r or #r == 0 then return nil end
@@ -87,16 +87,46 @@ local function fast_write(cmd, chunk, address, last)
   return false
 end
 
-function protocol.probe()
-  local data = command_ack(16, string.rep("\0", 56))
-  if not data or #data ~= 56 then return false end
-  local vid = data:byte(5) + data:byte(6) * 256
-  local pid = data:byte(7) + data:byte(8) * 256
-  if vid ~= 0x38A6 or pid ~= 0x2908 then
-    device:log("F87S 2.4G: receiver is not connected to an F87S; skipping")
-    return false
+-- 本体校验分三态，因为「键盘休眠」和「不是 F87S」必须区别对待：
+--   "f87s"   = 确认是 F87S 本体
+--   "other"  = 接收器在线，但后面挂的不是 F87S
+--   "silent" = 没有任何应答（键盘休眠 / 未按醒），值得稍后重试
+-- 旧实现把后两种都当成失败直接 return false，导致扫描一次不中就永远不再出现。
+function protocol.identify()
+  local chunk = string.rep("\0", 56)
+  local packet = report(16, chunk, 0, true)
+  for attempt = 1, 2 do
+    if drain() and write_result(packet) then
+      local data = ack(16, 0, 56, 4, 150)
+      if data and #data == 56 then
+        local vid = data:byte(5) + data:byte(6) * 256
+        local pid = data:byte(7) + data:byte(8) * 256
+        if vid ~= 0x38A6 or pid ~= 0x2908 then return "other" end
+        return "f87s"
+      end
+    end
+    -- 首轮失败后留一个读超时当等待，给休眠中的键盘一次被按醒的机会。
+    if attempt == 1 then pcall(device.read, device, 65, 150) end
   end
-  return true
+  return "silent"
+end
+
+-- 心跳：一次写 + 至多两次 80ms 短读，只回答「本体还在不在」。
+-- 必须比 identify() 便宜得多——identify() 在无应答时要阻塞约 1.3 秒
+-- (2 轮 x (4 次 150ms 读 + 1 次 150ms 等待))，拿来做两秒一次的常驻
+-- 心跳会把插件线程长期钉住，反而制造新的卡顿。
+function protocol.ping()
+  local packet = report(16, string.rep("\0", 56), 0, true)
+  if not (drain() and write_result(packet)) then return false end
+  return ack(16, 0, 56, 2, 80) ~= nil
+end
+
+-- 丢弃差分基线，强制下一帧走完整表重同步。
+-- 唤醒后必须调用：差分基线在插件里，硬件表在键盘里，
+-- 键盘休眠会自己清表，两边就此永久分叉。
+function protocol.resync()
+  last_rgb, last_table = nil, nil
+  last_ring_rgb, last_side_rgb = nil, nil
 end
 
 function protocol.initialize()
